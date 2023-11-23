@@ -230,7 +230,7 @@ def excluir_primeira_linha():
 
     # Inserir a linha excluída no banco de logs
     cursor_logs.execute('CREATE TABLE IF NOT EXISTS logs (serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cnpj_entidade)')
-    cursor_logs.execute('INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?)', linha_excluida)
+    cursor_logs.execute('INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', linha_excluida)
     conn_logs.commit()
 
     # Fechar as conexões
@@ -337,17 +337,37 @@ def abrir_navegador():
         WebDriverWait(navegador, 10).until(
             lambda x: x.execute_script("return document.readyState == 'complete'")
         )
-        # Preencher campos de login
-        campo_login = WebDriverWait(navegador, 10).until(
-            EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[3]/input"))
-        )
-        campo_login.send_keys("05108821000160")
 
-        # Preencher campos de senha
-        campo_senha = WebDriverWait(navegador, 10).until(
-            EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[5]/div/input"))
-        )
-        campo_senha.send_keys("Acero#2697")
+
+        if empresa == "ACERO MTZ":
+            # Preencher campos de login
+            campo_login = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[3]/input"))
+            )
+            campo_login.send_keys("05108821000160")
+
+            # Preencher campos de senha
+            campo_senha = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[5]/div/input"))
+            )
+            campo_senha.send_keys("Acero#2697")
+
+        if empresa == "PRIMADO":
+            # Preencher campos de login
+            campo_login = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[3]/input"))
+            )
+            campo_login.send_keys(primado_login)
+
+            # Preencher campos de senha
+            campo_senha = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[5]/div/input"))
+            )
+            campo_senha.send_keys(primado_senha)
+
+
+
+
 
         # Aguardar até que a página esteja completamente carregada
         WebDriverWait(navegador, 10).until(
@@ -376,6 +396,7 @@ def abrir_navegador():
         time.sleep(2)
 
         print("Login feito com sucesso...")
+        print(empresa)
         print(" ")
 
         # Itera sobre os handles das janelas e muda para a janela desejada
@@ -453,11 +474,7 @@ def processo():
 
                 time.sleep(2)
 
-                print(f"NOTA LANÇADA: ({descricao_utilizacao}): Serial: {serial} | "
-                    f"Data de Lançamento: {data_doc} | "
-                    f"Descrição Item: {descricao_item} | "
-                    f"Valor Contábil: R$ {valor_contabil}")
-                print("")
+                print("foi")
 
                 excluir_primeira_linha()
 
@@ -558,6 +575,10 @@ class App(customtkinter.CTk):
 
         # Período ##########################################################
 
+        self.empresa_option_menu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["Empresa", "ACERO MTZ", "ACERO ESTUFA", "PRIMADO", "SERVIÇOS" ], command=self.update_selected_empresa)
+        self.empresa_option_menu.set("Empresa")
+        self.empresa_option_menu.grid(row=1, column=0, padx=20, pady=10)
+
         # Calculate current, previous, and next months
         today = datetime.datetime.now()
         current_month_year = today.strftime("%m/%Y")
@@ -567,12 +588,9 @@ class App(customtkinter.CTk):
         # Create the CTkOptionMenu with the command attribute
         self.period_option_menu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["Período", previous_month_year, current_month_year, next_month_year], command=self.update_selected_period)
         self.period_option_menu.set("Período")
-        self.period_option_menu.grid(row=1, column=0, padx=20, pady=10)
+        self.period_option_menu.grid(row=2, column=0, padx=20, pady=10)
 
         #####################################################################
-        self.empresa_option_menu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["Empresa", "Acero Agronegocios" ], command=self.update_selected_period)
-        self.empresa_option_menu.set("Empresa")
-        self.empresa_option_menu.grid(row=2, column=0, padx=20, pady=10)
 
         self.sidebar_button_1 = customtkinter.CTkButton(self.sidebar_frame, text="Upload do Arquivo", command=upload_arquivo)
         self.sidebar_button_1.grid(row=3, column=0, padx=20, pady=10)
@@ -632,6 +650,10 @@ class App(customtkinter.CTk):
     def update_selected_period(self, selected_value):
         global selected_period
         selected_period = selected_value
+
+    def update_selected_empresa(self, selected_value):
+        global empresa
+        empresa = selected_value
 
     def exportar_logs_textbox(self):  # Add 'self' as the first parameter
         # Open a file dialog to choose the file location and name
