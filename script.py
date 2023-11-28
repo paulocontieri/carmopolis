@@ -14,6 +14,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.alert import Alert
 from tkinter import filedialog
 from PIL import Image, ImageTk
 import customtkinter
@@ -24,6 +25,7 @@ import datetime
 import threading
 import sys
 import tkinter.simpledialog
+import requests
 
 
                                                 ## CONFIGURAÇÕES
@@ -33,7 +35,7 @@ navegador = None
 empresa = ""
 log_conn = None
 selected_period = ""
-empresa = ""
+
 
 
 
@@ -53,8 +55,8 @@ estufa_login = "05108821000593"
 estufa_senha = "Acero#2698"
 
 # ACERO MTZ
-estufa_login = "05108821000160"
-estufa_senha = "Acero#2697"
+acero_login = "05108821000160"
+acero_senha = "Acero#2697"
 
 
                                       ## CLASSE PARA ESPELHAR O PRINT NO LOG
@@ -119,7 +121,7 @@ def carregar_dados(arquivo):
             if not pd.isna(cnpj):
                 cnpj_str = '{:014d}'.format(int(cnpj))
             else:
-                cnpj_str = None
+                cnpj_str = 0
 
             if not pd.isna(cnpj_entidade):
                 cnpj_entidade_str = '{:014d}'.format(int(cnpj_entidade))
@@ -141,8 +143,8 @@ def carregar_dados(arquivo):
                 item_formatado = None
             
             cursor.execute('''
-                INSERT INTO banco (serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, "valor_contabil", cnpj_entidade)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO banco (serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, "valor_contabil", cnpj_entidade, valor_iss)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 row['Serial'],
                 row['Descrição Utilização'],
@@ -152,7 +154,8 @@ def carregar_dados(arquivo):
                 row['IE Entidade'],
                 item_formatado,
                 row['Valor contábil'],
-                cnpj_entidade_str
+                cnpj_entidade_str,
+                row['Valor ISS']
             ))
 
     conn.commit()
@@ -197,7 +200,8 @@ def configurar_banco_dados():
             ie_entidade TEXT,
             descricao_item TEXT,
             valor_contabil REAL,
-            cnpj_entidade TEXT
+            cnpj_entidade TEXT,
+            valor_iss REAL
         )
     ''')
 
@@ -211,7 +215,7 @@ configurar_banco_dados()
 
 #######################################################
 # Função para excluir a primeira linha do banco de dados
-def excluir_primeira_linha():
+def excluir_primeira_linha(status_lancamento):
     # Conectar ao banco de dados principal
     conn_principal = sqlite3.connect('banco.db')
     cursor_principal = conn_principal.cursor()
@@ -229,16 +233,13 @@ def excluir_primeira_linha():
     conn_principal.commit()
 
     # Inserir a linha excluída no banco de logs
-    cursor_logs.execute('CREATE TABLE IF NOT EXISTS logs (serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cnpj_entidade)')
-    cursor_logs.execute('INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', linha_excluida)
+    cursor_logs.execute('CREATE TABLE IF NOT EXISTS logs (serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cnpj_entidade, valor_iss, status)')
+    cursor_logs.execute('INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (*linha_excluida, status_lancamento))
     conn_logs.commit()
 
     # Fechar as conexões
     conn_principal.close()
     conn_logs.close()
-
-
-
 
 #######################################################
 # Função para excluir todas as linhas do banco de dados
@@ -251,21 +252,12 @@ def excluir_todas_as_linhas():
     cursor_principal.execute('DELETE FROM banco')
     conn_principal.commit()
 
+    tkinter.messagebox.showinfo("Sucesso", f"O Banco de Dados foi Excluído com Sucesso!")
+
     # Fechar a conexão do banco principal
     conn_principal.close()
 
-    # Conectar ao banco de dados de logs
-    conn_logs = sqlite3.connect('logs.db')
-    cursor_logs = conn_logs.cursor()
 
-    # Excluir todas as linhas da tabela de logs
-    cursor_logs.execute('DELETE FROM logs')
-    conn_logs.commit()
-    tkinter.messagebox.showinfo("Sucesso", f"O Banco de Dados foi Excluído com Sucesso! Isso inclui o Histórico de Lançamentos.")
-    
-
-    # Fechar a conexão do banco de logs
-    conn_logs.close()
 
 #######################################################
 # Função para excluir todas as linhas do banco de dados
@@ -311,12 +303,55 @@ def exportar_logs():
 
         tkinter.messagebox.showinfo("Sucesso", f"Dados exportados com sucesso!")
 
+## INFORMAÇÕES DA EMPRESA (GET RECEITA FEDERAL) ------------------------------------------------------------
+
+#######################################################
+# Função consultar cnpj
+def consultar_informacoes(cnpj):
+    def consultar_cnpj(cnpj):
+        url = f'https://www.receitaws.com.br/v1/cnpj/{cnpj}'
+        
+        try:
+            response = requests.get(url)
+            data = response.json()
+
+            if response.status_code == 200:
+                # As informações estão no dicionário 'data'
+                return data
+            else:
+                print(f"Erro na requisição: {data['message']}")
+                return None
+        except Exception as e:
+            print(f"Erro na requisição: {str(e)}")
+            return None
+
+    informacoes = consultar_cnpj(cnpj)
+
+    if informacoes:
+        print("Informacoes do PRESTADOR:")
+        print(f"UF: {informacoes['uf']}")
+        print(f"Municipio: {informacoes['municipio']}")
+        print(f"Logradouro: {informacoes['logradouro']}")
+        print(f"Bairro: {informacoes['bairro']}")
+    else:
+        print("Não foi possível obter informações do CNPJ.")
+
+
 
 ## CONFIGURAÇÃO DE NAVEGADOR -------------------------------------------------------------------------------
 
 #######################################################
 # Função para abrir o navegador apenas uma vez
 def abrir_navegador():
+    print("Iniciando Sistema...")
+    print("")
+    print("♦♦*•.¸¸¸.•*¨¨*•.¸¸¸.•*•♦¸.•*¨¨*•.¸¸¸.•*•.¸.•*¨¨*•.¸¸¸.•*")
+    print("   ♦♦   ░A░G░R░O░C░O░N░T░A░R░")
+    print("*•♦*•.¸¸¸.•*¨¨*•.¸¸¸.•*•♦¸.•*¨¨*•.¸¸¸.•*•.¸.•*¨¨*•.¸¸¸.•*")
+    print("             Soluções Contábeis para o Agronegócio")
+    print("")
+    print("")
+
     global navegador
     if not navegador:
         options = Options()
@@ -325,8 +360,6 @@ def abrir_navegador():
         navegador = webdriver.Chrome(service=servico, options=options)
         navegador.maximize_window()
         navegador.get("https://nfse-carmopolisdeminas.atende.net/autoatendimento/servicos/nfse/") 
-
-        print("Iniciando Sistema...")
 
         # Store the ID of the original window
         original_window = navegador.current_window_handle
@@ -339,18 +372,19 @@ def abrir_navegador():
         )
 
 
-        if empresa == "ACERO MTZ":
+        if empresa == "SERVIÇOS":
             # Preencher campos de login
             campo_login = WebDriverWait(navegador, 10).until(
                 EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[3]/input"))
             )
-            campo_login.send_keys("05108821000160")
+            campo_login.send_keys(servicos_login)
 
             # Preencher campos de senha
             campo_senha = WebDriverWait(navegador, 10).until(
                 EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[5]/div/input"))
             )
-            campo_senha.send_keys("Acero#2697")
+            campo_senha.send_keys(servicos_senha)
+
 
         if empresa == "PRIMADO":
             # Preencher campos de login
@@ -366,7 +400,32 @@ def abrir_navegador():
             campo_senha.send_keys(primado_senha)
 
 
+        if empresa == "ACERO ESTUFA":
+            # Preencher campos de login
+            campo_login = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[3]/input"))
+            )
+            campo_login.send_keys(estufa_login)
 
+            # Preencher campos de senha
+            campo_senha = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[5]/div/input"))
+            )
+            campo_senha.send_keys(estufa_senha)
+
+
+        if empresa == "ACERO MTZ":
+            # Preencher campos de login
+            campo_login = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[3]/input"))
+            )
+            campo_login.send_keys(acero_login)
+
+            # Preencher campos de senha
+            campo_senha = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/span[5]/div/input"))
+            )
+            campo_senha.send_keys(acero_senha)
 
 
         # Aguardar até que a página esteja completamente carregada
@@ -395,9 +454,8 @@ def abrir_navegador():
 
         time.sleep(2)
 
-        print("Login feito com sucesso...")
-        print(empresa)
-        print(" ")
+        print(f"Login feito com sucesso na empresa {empresa}")
+        print(f"Período selecionado: {selected_period}")
 
         # Itera sobre os handles das janelas e muda para a janela desejada
         for handle in all_handles:
@@ -417,77 +475,258 @@ def processo():
     try:
         conn = sqlite3.connect('banco.db')
         cursor = conn.cursor()
-        cursor.execute('SELECT serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cnpj_entidade FROM banco')
+        cursor.execute('SELECT serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cnpj_entidade, valor_iss FROM banco')
         linhas = cursor.fetchall()
         conn.close()
 
         quantidade_restante = len(linhas)
+        quantidade_atual = 1
+        quantidade_falha = 0
+        quantidade_sucesso = 0
+        
         print("Quantidade de lançamentos: " + str(quantidade_restante))
-        print(" ")
+        print("")
+        print("")
+        time.sleep(5)
+        print("")
+        print("")
+        print("--------------------------------------------------------------------------------------------- L A N Ç A M E N T O S -----------------------------------------------------------------------------")
+        print("")
+
 
         for linha in linhas:
-            serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cpj_entidade = linha
+            serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cpj_entidade, valor_iss = linha
 
-            if descricao_utilizacao == "Servico Tomado (NF de Serviços-Prefeitura)":
+            # Formatar valor com 2 casas decimais
+            valor_contabil_formatado = "{:.2f}".format(valor_contabil)
+
+            # Verificar datas 
+            data_atualizada = data_doc[-7:]
+
+            # Verificar Dados do CNPJ do Tomador
+            cnpj_prestador = cnpj
+            consultar_informacoes(cnpj_prestador)
+
+
+            ## Se for SERVIÇO TOMADO
+            if descricao_utilizacao == "Servico Tomado (NF de Serviços-Prefeitura)" and selected_period == data_atualizada:
+
                 # Aguardar até que a página esteja completamente carregada
                 WebDriverWait(navegador, 10).until(
                     lambda x: x.execute_script("return document.readyState == 'complete'")
                 )
 
                 # Clicar no menu
-                botao_menu = WebDriverWait(navegador, 10).until(
+                botao_menu_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_menu_sistema']/ul/li[5]"))
                 )
-                botao_menu.click()
+                botao_menu_tomador.click()
 
                 # Clicar tomador
-                botao_tomador = WebDriverWait(navegador, 10).until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, ".estrutura_submenu_sistema:nth-child(6) > .estrutura_menu_item:nth-child(1) > .estrutura_submenu_item_titulo"))
+                botao_tomador_tomador = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, ".estrutura_submenu_sistema:nth-child(6) > .estrutura_menu_item:nth-child(2) > .estrutura_submenu_item_titulo"))
                 )
-                botao_tomador.click()
-
-                # Aguardar até que a página esteja completamente carregada
-                WebDriverWait(navegador, 10).until(
-                    lambda x: x.execute_script("return document.readyState == 'complete'")
-                )
-
-                # Clicar Consultar
-                botao_consultar = WebDriverWait(navegador, 10).until(
-                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64014_101_1']/article/div[1]/aside[1]/div/div[3]/table/tbody/tr/td[3]"))
-                )
-                botao_consultar.click()
-
+                botao_tomador_tomador.click()
                 time.sleep(3)
 
-                # Clicar Ordernar Competência
-                botao_ordenar = WebDriverWait(navegador, 10).until(
-                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64014_101_1']/article/div[1]/header/div[2]/table/tbody/tr[1]/td[3]/div[2]/div"))
+                # Clicar Consultar
+                botao_consultar_tomador = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64022_101_1']/article/div[1]/aside[1]/div/div[3]/table/tbody/tr/td[3]"))
                 )
-                botao_ordenar.click()
-
+                botao_consultar_tomador.click()
                 time.sleep(2)
 
-                linha_competencia_12_2023 = WebDriverWait(navegador, 10).until(
+                # Clicar Ordernar Competência
+                botao_ordenar_tomador = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64022_101_1']/article/div[1]/header/div[2]/table/tbody/tr[1]/td[3]"))
+                )
+                botao_ordenar_tomador.click()
+                time.sleep(2)
+
+                # Clicar na Competência escolhida no app
+                linha_competencia_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, f"//tr[td[@aria-description='{selected_period}']]"))
                 )
-                linha_competencia_12_2023.click()
-
+                linha_competencia_tomador.click() 
                 time.sleep(2)
 
-                print("foi")
+                # Clicar em declaração
+                botao_declaracao_tomador = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, ".fa-calendar-week > .label_botao_acao"))
+                )
+                botao_declaracao_tomador.click() 
+                time.sleep(2)
 
-                excluir_primeira_linha()
+                # Clicar em declaração
+                botao_declarar_tomador = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_101_1']/article/div[1]/aside[2]/div[1]/span"))
+                )
+                botao_declarar_tomador.click() 
+                time.sleep(2)
+
+                # Selecionar tipo 5
+                selecionar_tipo = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[1]/td[2]/span/select/option[4]"))
+                )
+                selecionar_tipo.click() 
+                time.sleep(2)
+
+                # Preencher serie
+                campo_serie = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[2]/td[2]/span/input"))
+                )
+                campo_serie.send_keys("E")
+                time.sleep(2)
+
+                # Selecionar situacao
+                selecionar_situacao = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[2]/td[4]/span/select/option[1]"))
+                )
+                selecionar_situacao.click() 
+                time.sleep(2)
+
+                # Preencher numero/serial
+                campo_serial = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[3]/td[2]/span/input"))
+                )
+                campo_serial.send_keys(serial)
+                time.sleep(2)
+
+                # Preencher dia
+                campo_dia = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[4]/td[2]/span/input"))
+                )
+                campo_dia.send_keys(data_doc[:2])
+                time.sleep(2)
+
+
+                if cnpj != '0':
+                
+                    cnpj_option = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[3]/td/fieldset/div/div/table/tbody/tr[1]/td[2]/span/select/option[2]"))
+                    )
+                    cnpj_option.click() 
+                    time.sleep(2)
+
+                    campo_cnpj = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[3]/td/fieldset/div/div/table/tbody/tr[2]/td[2]/span/input[2]"))
+                    )
+                    campo_cnpj.send_keys(cnpj)
+                    time.sleep(2)
+                    campo_cnpj.send_keys(Keys.ENTER)
+                    time.sleep(2)
+
+                #Clica em proximo
+                proximo_button = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='janela_64023_139_1']/div[2]/footer/button[1]"))
+                )
+                proximo_button.click() 
+                time.sleep(2)
+
+                #Local da prestação
+                if valor_iss == 0:
+                    local_prestacao = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[2]/td[2]/span/input[4]"))
+                    )
+                    local_prestacao.send_keys("CARMÓPOLIS DE MINAS")
+                    time.sleep(2)
+                    local_prestacao.send_keys(Keys.ENTER)
+                    time.sleep(2)
+                
+                #Lista Serviço
+                lista_servico = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[3]/td[2]/span/input[1]"))
+                )
+                lista_servico.send_keys(descricao_item)
+                time.sleep(2)
+
+                # Situação Tributária
+                
+
+
+
+
+
+
+
+                
+                print("")
+                print(f"NOTA Nº {quantidade_atual} LANÇADA!")
+                print("")
+                # Consultar CNPJ
+                if cnpj != '0':
+                    cnpj_desejado = cnpj
+                    consultar_informacoes(cnpj_desejado)
+                else:
+                    print(f"Prestador do serviço é um CPF: {cpf}")
+                print("")
+                print(f"Serial: {serial}")
+                print(f"Data: {data_doc}")
+                print(f"CNPJ: {cnpj}")
+                print(f"Descrição Utilização: {descricao_utilizacao}")
+                print(f"Descrição Item: {descricao_item}")
+                print(f"Valor Contábil: R$ {valor_contabil_formatado} reais")
+                print("")
+                print("-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
+
+                quantidade_atual = quantidade_atual + 1
+                quantidade_sucesso = quantidade_sucesso + 1
+                status_lancamento = "LANÇADO"
+                excluir_primeira_linha(status_lancamento)
+
+                time.sleep(5)
+
 
             else:
-                time.sleep(2)
-                print("Nao achou")
+                primeira_condicao = ""
+                segunda_condicao = ""
 
-            time.sleep(2)
+                if descricao_utilizacao == "Servico Prestado (NF de Serviços-Prefeitura)":
+                    primeira_condicao = "O sistema está configurado para efetuar exclusivamente lançamentos de Notas de Serviço Tomado."
+
+                if data_atualizada != selected_period:
+                    segunda_condicao = "O sistema não efetua lançamentos de Notas com datas que não coincidem com o período escolhido, em comparação com a data presente no arquivo importado."
+      
+                print("")
+                print(f"NOTA Nº {quantidade_atual} NÃO LANÇADA!")
+                print("")
+                # Consultar CNPJ
+                if cnpj != '0':
+                    cnpj_desejado = cnpj
+                    consultar_informacoes(cnpj_desejado)
+                else:
+                    print(f"Prestador do serviço é um CPF: {cpf}")
+                print("")
+                print(f"Serial: {serial}")
+                print(f"Data: {data_doc}")
+                print(f"CNPJ: {cnpj}")
+                print(f"Descrição Utilização: {descricao_utilizacao}")
+                print(f"Descrição Item: {descricao_item}")
+                print(f"Valor Contábil: R$ {valor_contabil_formatado} reais")
+                print("")
+                print(f"Motivo da falha: \n\n* {primeira_condicao}\n* {segunda_condicao}")
+                print("")
+                print("-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
+                quantidade_falha = quantidade_falha + 1
+                quantidade_atual = quantidade_atual + 1
+                status_lancamento = "NÃO LANÇADO"
+                excluir_primeira_linha(status_lancamento)
+
+                time.sleep(5)
+
+        print("")
+        print("")
+        print("╔═════════╗")
+        print("┃ ▁▂▃▅▆▇ 100% |")
+        print("╚═════════╝")
+        print(f"LANÇADAS: {quantidade_sucesso}")
+        print(f"NÃO LANÇADAS: {quantidade_falha}")
+
+
+
     except Exception as e:
         tkinter.messagebox.showerror("Erro", f"Ocorreu um erro com o sistema! Reinicie a aplicação.")
-
-
-
+        print(e)
 
 
 
@@ -496,20 +735,44 @@ def processo():
 #######################################################
 # Função para iniciar processo
 def iniciar_processo():
-    if selected_period == "":
-      tkinter.messagebox.showerror("Erro", f"Escolha um período para Iniciar o Processo.")
+
+    conn = sqlite3.connect('banco.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT serial, descricao_utilizacao, cnpj, cpf, data_doc, ie_entidade, descricao_item, valor_contabil, cnpj_entidade, valor_iss FROM banco')
+    cnpj_entidade = cursor.fetchone()
+    conn.close()
+
+
+    cnpj_escolhido = ""
+
+    if empresa == "ACERO MTZ":
+        cnpj_escolhido = "05108821000160"
+    elif empresa == "ACERO ESTUFA":
+        cnpj_escolhido = "05108821000593"
+    elif empresa == "PRIMADO":
+        cnpj_escolhido = "30041020000171"
+    elif empresa == "SERVIÇOS":
+        cnpj_escolhido = "40044113000103"
+
+    if empresa == "":
+        tkinter.messagebox.showerror("Erro", f"Escolha uma Empresa para Iniciar o Processo.")
+    elif selected_period == "":
+        tkinter.messagebox.showerror("Erro", f"Escolha um Período para Iniciar o Processo.") 
+    elif not verificar_dados_no_banco():
+        tkinter.messagebox.showerror("Erro", f"Não há dados no banco de dados. Carregue um arquivo primeiro.")
     else:
         # Verifica se há dados no banco de dados antes de iniciar o processo
-        if verificar_dados_no_banco():
-            # Desabilita o botão Iniciar Processo durante a execução do processo
-            print("Período de Lançamento: ", selected_period)
-
-            # Inicie a função abrir_navegador_thread em uma thread separada
-            # Inicie o navegador e o processo na mesma thread
-            processo_navegador_thread = threading.Thread(target=lambda: [abrir_navegador(), processo()])
-            processo_navegador_thread.start()
+        if cnpj_escolhido == cnpj_entidade[8]:
+                # Inicie a função abrir_navegador_thread em uma thread separada
+                # Inicie o navegador e o processo na mesma thread
+                processo_navegador_thread = threading.Thread(target=lambda: [abrir_navegador(), processo()])
+                processo_navegador_thread.start()
         else:
-          tkinter.messagebox.showerror("Erro", f"Não há dados no banco de dados. Carregue um arquivo primeiro.")
+            tkinter.messagebox.showerror("Erro", f"A empresa escolhida não confere com a empresa no banco de dados. \n Empresa Escolhida: {cnpj_escolhido} \n Empresa no Banco de Dados: {cnpj_entidade[8]}")
+
+            
+            
+
 
 
 
@@ -547,7 +810,7 @@ class App(customtkinter.CTk):
         self.export_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.export_menu.add_command(label="Exportar Banco de Dados", command=exportar_banco)
         self.export_menu.add_command(label="Exportar Lançamentos Feitos", command=exportar_logs)
-        self.export_menu.add_command(label="Exportar Logs", command=self.exportar_logs_textbox)
+        self.export_menu.add_command(label="Exportar Logs", command=self.exportar_logs)
         self.menu_bar.add_cascade(label="Exportar", menu=self.export_menu)  # Fix here, use self.export_menu instead of self.system_menu
 
         # create help menu
@@ -595,6 +858,7 @@ class App(customtkinter.CTk):
         self.sidebar_button_1 = customtkinter.CTkButton(self.sidebar_frame, text="Upload do Arquivo", command=upload_arquivo)
         self.sidebar_button_1.grid(row=3, column=0, padx=20, pady=10)
 
+
         self.appearance_mode_label = customtkinter.CTkLabel(self.sidebar_frame, text="Tema:", anchor="w")
         self.appearance_mode_label.grid(row=5, column=0, padx=20, pady=(10, 0))
         self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"],
@@ -627,6 +891,23 @@ class App(customtkinter.CTk):
         # Redirect print statements to the textbox
         sys.stdout = TextboxRedirector(self.textbox)
 
+    def export_to_txt(self, filename):
+        try:
+            with open(filename, 'w', encoding='utf-8') as file:
+                content = self.textbox.get("1.0", "end-1c")
+                file.write(content)
+            print("")
+            print("Sucesso:", f"O log foi salvo em: {filename}")
+        except Exception as e:
+            print("")
+            print("Erro ao exportar arquivo", f"Um erro ocorreu: {e}")
+
+    def exportar_logs(self):
+        # Prompt the user to choose a file for exporting
+        filename = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")])
+        if filename:
+            self.export_to_txt(filename)
+
     def open_input_dialog_event(self):
         dialog = customtkinter.CTkInputDialog(text="Type in a number:", title="CTkInputDialog")
         print("CTkInputDialog:", dialog.get_input())
@@ -654,26 +935,6 @@ class App(customtkinter.CTk):
     def update_selected_empresa(self, selected_value):
         global empresa
         empresa = selected_value
-
-    def exportar_logs_textbox(self):  # Add 'self' as the first parameter
-        # Open a file dialog to choose the file location and name
-        file_path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")])
-
-        # Check if the user selected a file
-        if file_path:
-            try:
-                # Open the selected file in write mode
-                with open(file_path, 'w') as file:
-                    # Get the text from the textbox and write it to the file
-                    logs_text = self.textbox.get(1.0, tk.END)  # Use 'self.textbox' instead of 'app.textbox'
-                    file.write(logs_text)
-
-                # Display a success message in a modal popup
-                tkinter.messagebox.showinfo("Export Successful", f"Logs exported successfully to:\n{file_path}")
-            except Exception as e:
-                # Display an error message in a modal popup
-                tkinter.messagebox.showerror("Export Error", f"Error exporting logs:\n{str(e)}")
-
 
 
     ########################## MANUAIS ############################
