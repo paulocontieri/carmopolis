@@ -15,6 +15,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.alert import Alert
+from selenium.common.exceptions import TimeoutException
 from tkinter import filedialog
 from PIL import Image, ImageTk
 import customtkinter
@@ -35,8 +36,6 @@ navegador = None
 empresa = ""
 log_conn = None
 selected_period = ""
-
-
 
 
 # LOGINS ------------------------------------------------------------------------------
@@ -307,34 +306,33 @@ def exportar_logs():
 
 #######################################################
 # Função consultar cnpj
-def consultar_informacoes(cnpj):
-    def consultar_cnpj(cnpj):
-        url = f'https://www.receitaws.com.br/v1/cnpj/{cnpj}'
-        
-        try:
-            response = requests.get(url)
-            data = response.json()
+def consultar_cnpj(cnpj):
+    url = f'https://www.receitaws.com.br/v1/cnpj/{cnpj}'
 
-            if response.status_code == 200:
-                # As informações estão no dicionário 'data'
-                return data
-            else:
-                print(f"Erro na requisição: {data['message']}")
-                return None
-        except Exception as e:
-            print(f"Erro na requisição: {str(e)}")
-            return None
+    try:
+        response = requests.get(url)
+        data = response.json()
 
-    informacoes = consultar_cnpj(cnpj)
+        # Criando um dicionário com todas as informações desejadas
+        info = {
+            'tipo': data.get('tipo', ''),
+            'nome': data.get('nome', ''),
+            'uf': data.get('uf', ''),
+            'municipio': data.get('municipio', ''),
+            'logradouro': data.get('logradouro', ''),
+            'numero': data.get('numero', ''),
+            'cep': data.get('cep', ''),
+            'email': data.get('email', ''),
+            'bairro': data.get('bairro'),
+            'cep': data.get('cep'),
+            'email': data.get('email', ''),
+            # Adicione mais campos conforme necessário
+        }
 
-    if informacoes:
-        print("Informacoes do PRESTADOR:")
-        print(f"UF: {informacoes['uf']}")
-        print(f"Municipio: {informacoes['municipio']}")
-        print(f"Logradouro: {informacoes['logradouro']}")
-        print(f"Bairro: {informacoes['bairro']}")
-    else:
-        print("Não foi possível obter informações do CNPJ.")
+        return info  # Retorne o dicionário com as informações
+    except requests.exceptions.RequestException as e:
+        print(f"Erro na requisição: {e}")
+        return None
 
 
 
@@ -468,6 +466,24 @@ def abrir_navegador():
 
         time.sleep(2)
 
+        # Clicar na Lateral (Fiscal)
+        elemento_fiscal = WebDriverWait(navegador, 10).until(
+            EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_menu_conjuntos']/ul/li[1]/div"))
+        )
+        elemento_fiscal.click()
+
+        time.sleep(1)
+
+        # Clicar em Escrita Fiscal
+        escrita_fiscal = WebDriverWait(navegador, 10).until(
+            EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_menu_conjuntos']/ul/li[1]/ul/li[1]/div"))
+        )
+        escrita_fiscal.click()
+
+        time.sleep(2)
+
+
+
 
 ## AUTOMAÇÃO DENTRO DA PREFEITURA --------------------------------------------------------------------------
 #######################################################
@@ -503,9 +519,34 @@ def processo():
             # Verificar datas 
             data_atualizada = data_doc[-7:]
 
-            # Verificar Dados do CNPJ do Tomador
-            cnpj_prestador = cnpj
-            consultar_informacoes(cnpj_prestador)
+            # Verificar CNPJ
+            informacoes = consultar_cnpj(cnpj)
+
+            if informacoes is not None:
+                uf = informacoes.get('uf', '')
+                municipio = informacoes.get('municipio', '')
+                tipo = informacoes.get('tipo', '')
+                nome = informacoes.get('nome', '')
+            else:
+                # Lida com a situação em que não há informações para o CNPJ
+                print(f"Nenhuma informação encontrada para o CNPJ: {cnpj}")
+
+
+            # Verificar Situação Tributária
+            situacao_tributaria_print = ""
+
+            # Clicar no menu
+            botao_menu_tomador = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_menu_sistema']/ul/li[5]"))
+            )
+            botao_menu_tomador.click()
+
+            # Clicar tomador
+            botao_tomador_tomador = WebDriverWait(navegador, 10).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, ".estrutura_submenu_sistema:nth-child(6) > .estrutura_menu_item:nth-child(2) > .estrutura_submenu_item_titulo"))
+            )
+            botao_tomador_tomador.click()
+            time.sleep(2)
 
 
             ## Se for SERVIÇO TOMADO
@@ -516,48 +557,35 @@ def processo():
                     lambda x: x.execute_script("return document.readyState == 'complete'")
                 )
 
-                # Clicar no menu
-                botao_menu_tomador = WebDriverWait(navegador, 10).until(
-                    EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_menu_sistema']/ul/li[5]"))
-                )
-                botao_menu_tomador.click()
-
-                # Clicar tomador
-                botao_tomador_tomador = WebDriverWait(navegador, 10).until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, ".estrutura_submenu_sistema:nth-child(6) > .estrutura_menu_item:nth-child(2) > .estrutura_submenu_item_titulo"))
-                )
-                botao_tomador_tomador.click()
-                time.sleep(3)
-
                 # Clicar Consultar
                 botao_consultar_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64022_101_1']/article/div[1]/aside[1]/div/div[3]/table/tbody/tr/td[3]"))
                 )
                 botao_consultar_tomador.click()
-                time.sleep(2)
+                time.sleep(1)
 
                 # Clicar Ordernar Competência
                 botao_ordenar_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64022_101_1']/article/div[1]/header/div[2]/table/tbody/tr[1]/td[3]"))
                 )
                 botao_ordenar_tomador.click()
-                time.sleep(2)
+                time.sleep(1)
 
                 # Clicar na Competência escolhida no app
                 linha_competencia_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, f"//tr[td[@aria-description='{selected_period}']]"))
                 )
                 linha_competencia_tomador.click() 
-                time.sleep(2)
+                time.sleep(1)
 
                 # Clicar em declaração
                 botao_declaracao_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.CSS_SELECTOR, ".fa-calendar-week > .label_botao_acao"))
                 )
                 botao_declaracao_tomador.click() 
-                time.sleep(2)
+                time.sleep(1)
 
-                # Clicar em declaração
+                # Clicar em declarar
                 botao_declarar_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_101_1']/article/div[1]/aside[2]/div[1]/span"))
                 )
@@ -569,35 +597,35 @@ def processo():
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[1]/td[2]/span/select/option[4]"))
                 )
                 selecionar_tipo.click() 
-                time.sleep(2)
+                time.sleep(1)
 
                 # Preencher serie
                 campo_serie = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[2]/td[2]/span/input"))
                 )
                 campo_serie.send_keys("E")
-                time.sleep(2)
+                time.sleep(1)
 
                 # Selecionar situacao
                 selecionar_situacao = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[2]/td[4]/span/select/option[1]"))
                 )
                 selecionar_situacao.click() 
-                time.sleep(2)
+                time.sleep(1)
 
                 # Preencher numero/serial
                 campo_serial = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[3]/td[2]/span/input"))
                 )
                 campo_serial.send_keys(serial)
-                time.sleep(2)
+                time.sleep(1)
 
                 # Preencher dia
                 campo_dia = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[2]/td/fieldset/div/div/table/tbody/tr[4]/td[2]/span/input"))
                 )
                 campo_dia.send_keys(data_doc[:2])
-                time.sleep(2)
+                time.sleep(1)
 
 
                 if cnpj != '0':
@@ -606,7 +634,7 @@ def processo():
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[3]/td/fieldset/div/div/table/tbody/tr[1]/td[2]/span/select/option[2]"))
                     )
                     cnpj_option.click() 
-                    time.sleep(2)
+                    time.sleep(1)
 
                     campo_cnpj = WebDriverWait(navegador, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[1]/table/tbody/tr[3]/td/fieldset/div/div/table/tbody/tr[2]/td[2]/span/input[2]"))
@@ -615,6 +643,17 @@ def processo():
                     time.sleep(2)
                     campo_cnpj.send_keys(Keys.ENTER)
                     time.sleep(2)
+
+
+                try:
+                    cadastro_empresa = WebDriverWait(navegador, 1).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_container_sistema']/div[4]/section/footer/button[1]"))
+                    )
+                    tkinter.messagebox.showerror("Erro", f"O CNPJ do Prestador({cnpj}) não está Cadastrado no Sistema! Feche o Aplicativo, Faça o Cadastro e volte a Executar.")
+                    cadastro_empresa.click()
+
+                except TimeoutException:
+                    pass
 
                 #Clica em proximo
                 proximo_button = WebDriverWait(navegador, 10).until(
@@ -631,40 +670,98 @@ def processo():
                     local_prestacao.send_keys("CARMÓPOLIS DE MINAS")
                     time.sleep(2)
                     local_prestacao.send_keys(Keys.ENTER)
+                    time.sleep(1)
+                elif valor_iss != 0:
+                    local_prestacao = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[2]/td[2]/span/input[4]"))
+                    )
+                    local_prestacao.send_keys(municipio)
                     time.sleep(2)
+                    local_prestacao.send_keys(Keys.ENTER)
+                    time.sleep(1)
                 
                 #Lista Serviço
                 lista_servico = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[3]/td[2]/span/input[1]"))
                 )
                 lista_servico.send_keys(descricao_item)
-                time.sleep(2)
-
-                # Situação Tributária
+                time.sleep(1)
                 
+                # Mesmo municipio que Prestador
+                if municipio == "CARMOPOLIS DE MINAS" or "carmopolis de minas" or "Carmopolis de Minas":
+                    situacao_tributaria = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[5]/td[2]/span/select/option[13]"))
+                    )
+                    situacao_tributaria.click() 
+                    situacao_tributaria_print = "NTPEM"
+                    time.sleep(1)
+
+                # Municipio diferente mas sem valor no campo iss
+                elif municipio != "CARMOPOLIS DE MINAS" or "carmopolis de minas" or "Carmopolis de Minas" and valor_iss == 0:
+                    situacao_tributaria = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[5]/td[2]/span/select/option[14]"))
+                    )
+                    situacao_tributaria.click() 
+                    situacao_tributaria_print = "NTREP"
+                    time.sleep(1)
+
+                # Municipio diferente e valor no campo iss
+                elif municipio != "CARMOPOLIS DE MINAS" or "carmopolis de minas" or "Carmopolis de Minas" and valor_iss != 0:
+                    situacao_tributaria = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[5]/td[2]/span/select/option[2]"))
+                    )
+                    situacao_tributaria.click() 
+                    situacao_tributaria_print = "TIRF"
+                    time.sleep(1)
+
+                # Valor do Serviço:
+                valor_servico = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[7]/td[2]/span/input"))
+                )
+                valor_servico.click()
+                time.sleep(1)
+                valor_servico.send_keys(valor_contabil_formatado)
+                time.sleep(1)
 
 
-
-
-
-
-
+                fechar1 = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='janela_64023_139_1']/div[2]/footer/button[4]"))
+                )
+                fechar1.click()
+                time.sleep(2)
+                
+                fechar2 = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_janelas_abertas']/div/div[3]/ul/ul/li[2]/span/span[2]"))
+                )
+                fechar2.click()
+                time.sleep(2)
+                
                 
                 print("")
                 print(f"NOTA Nº {quantidade_atual} LANÇADA!")
                 print("")
-                # Consultar CNPJ
+                print("Dados do Prestador: ")
                 if cnpj != '0':
-                    cnpj_desejado = cnpj
-                    consultar_informacoes(cnpj_desejado)
+                    print(f"CNPJ: {cnpj}")
+                    print(f"Nome: {nome}")
+                    print(f"Tipo: {tipo}")
+                    print(f"UF: {uf}")
+                    print(f"Município: {municipio}")
                 else:
-                    print(f"Prestador do serviço é um CPF: {cpf}")
+                    print("O Prestador é um CPF")
                 print("")
+                print("Dados da Nota:")
                 print(f"Serial: {serial}")
                 print(f"Data: {data_doc}")
                 print(f"CNPJ: {cnpj}")
                 print(f"Descrição Utilização: {descricao_utilizacao}")
+                if valor_iss != 0:
+                    print(f"Local da Prestação: {municipio} - {uf}")
+                else:
+                    print("Local da Prestação: Carmópolis de Minas - MG")
                 print(f"Descrição Item: {descricao_item}")
+                print(f"Situação Tributária: {situacao_tributaria_print}")
+                print(f"Valor ISS: R$ {valor_iss} reais")
                 print(f"Valor Contábil: R$ {valor_contabil_formatado} reais")
                 print("")
                 print("-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
@@ -680,31 +777,41 @@ def processo():
             else:
                 primeira_condicao = ""
                 segunda_condicao = ""
+                terceira_condicao = ""
 
                 if descricao_utilizacao == "Servico Prestado (NF de Serviços-Prefeitura)":
-                    primeira_condicao = "O sistema está configurado para efetuar exclusivamente lançamentos de Notas de Serviço Tomado."
+                    primeira_condicao = "* O sistema está configurado para efetuar exclusivamente lançamentos de Notas de Serviço Tomado."
 
                 if data_atualizada != selected_period:
-                    segunda_condicao = "O sistema não efetua lançamentos de Notas com datas que não coincidem com o período escolhido, em comparação com a data presente no arquivo importado."
+                    segunda_condicao = "* O sistema não efetua lançamentos de Notas com datas que não coincidem com o período escolhido, em comparação com a data presente no arquivo importado."
+
+                if cnpj == '0':
+                    terceira_condicao = "* O Prestador é uma pessoa física (CPF)."
       
                 print("")
                 print(f"NOTA Nº {quantidade_atual} NÃO LANÇADA!")
                 print("")
-                # Consultar CNPJ
+                print("Dados do Prestador: ")
                 if cnpj != '0':
-                    cnpj_desejado = cnpj
-                    consultar_informacoes(cnpj_desejado)
+                    print(f"CNPJ: {cnpj}")
+                    print(f"Nome: {nome}")
+                    print(f"Tipo: {tipo}")
+                    print(f"UF: {uf}")
+                    print(f"Município: {municipio}")
                 else:
-                    print(f"Prestador do serviço é um CPF: {cpf}")
+                    print("O Prestador é um CPF")
                 print("")
+                print("Dados da Nota:")
                 print(f"Serial: {serial}")
                 print(f"Data: {data_doc}")
                 print(f"CNPJ: {cnpj}")
                 print(f"Descrição Utilização: {descricao_utilizacao}")
                 print(f"Descrição Item: {descricao_item}")
+                print(f"Situação Tributária: {situacao_tributaria_print}")
+                print(f"Valor ISS: R$ {valor_iss} reais")
                 print(f"Valor Contábil: R$ {valor_contabil_formatado} reais")
                 print("")
-                print(f"Motivo da falha: \n\n* {primeira_condicao}\n* {segunda_condicao}")
+                print(f"Motivo da falha: \n\n{primeira_condicao}\n{segunda_condicao}\n{terceira_condicao}")
                 print("")
                 print("-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
                 quantidade_falha = quantidade_falha + 1
@@ -726,7 +833,7 @@ def processo():
 
     except Exception as e:
         tkinter.messagebox.showerror("Erro", f"Ocorreu um erro com o sistema! Reinicie a aplicação.")
-        print(e)
+        print("Feche a Aplicação, mas não se esqueça de Salvar o Log caso seja necessário :)")
 
 
 
