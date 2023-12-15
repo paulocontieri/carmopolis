@@ -571,12 +571,15 @@ def processo():
                 botao_ordenar_tomador.click()
                 time.sleep(1)
 
-                # Clicar na Competência escolhida no app
-                linha_competencia_tomador = WebDriverWait(navegador, 10).until(
-                    EC.visibility_of_element_located((By.XPATH, f"//tr[td[@aria-description='{selected_period}']]"))
-                )
-                linha_competencia_tomador.click() 
-                time.sleep(1)
+                try:
+                    # Clicar na Competência escolhida no app
+                    linha_competencia_tomador = WebDriverWait(navegador, 10).until(
+                        EC.visibility_of_element_located((By.XPATH, f"//tr[td[@aria-description='{selected_period}']]"))
+                    )
+                    linha_competencia_tomador.click() 
+                    time.sleep(1)
+                except:
+                    print("Competência não encontrada!")
 
                 # Clicar em declaração
                 botao_declaracao_tomador = WebDriverWait(navegador, 10).until(
@@ -688,7 +691,7 @@ def processo():
                 time.sleep(1)
                 
                 # Mesmo municipio que Prestador
-                if municipio == "CARMOPOLIS DE MINAS" or "carmopolis de minas" or "Carmopolis de Minas":
+                if municipio == "CARMOPOLIS DE MINAS":
                     situacao_tributaria = WebDriverWait(navegador, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[5]/td[2]/span/select/option[13]"))
                     )
@@ -697,7 +700,7 @@ def processo():
                     time.sleep(1)
 
                 # Municipio diferente mas sem valor no campo iss
-                elif municipio != "CARMOPOLIS DE MINAS" or "carmopolis de minas" or "Carmopolis de Minas" and valor_iss == 0:
+                elif municipio != "CARMOPOLIS DE MINAS" and valor_iss == 0:
                     situacao_tributaria = WebDriverWait(navegador, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[5]/td[2]/span/select/option[14]"))
                     )
@@ -706,7 +709,7 @@ def processo():
                     time.sleep(1)
 
                 # Municipio diferente e valor no campo iss
-                elif municipio != "CARMOPOLIS DE MINAS" or "carmopolis de minas" or "Carmopolis de Minas" and valor_iss != 0:
+                elif municipio != "CARMOPOLIS DE MINAS" and valor_iss != 0:
                     situacao_tributaria = WebDriverWait(navegador, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64023_139_1']/div/section/div[2]/article[2]/table/tbody/tr/td/div/div/table/tbody/tr[2]/td[1]/table/tbody/tr[5]/td[2]/span/select/option[2]"))
                     )
@@ -819,7 +822,7 @@ def processo():
                 status_lancamento = "NÃO LANÇADO"
                 excluir_primeira_linha(status_lancamento)
 
-                time.sleep(5)
+                time.sleep(45)
 
         print("")
         print("")
@@ -834,6 +837,7 @@ def processo():
     except Exception as e:
         tkinter.messagebox.showerror("Erro", f"Ocorreu um erro com o sistema! Reinicie a aplicação.")
         print("Feche a Aplicação, mas não se esqueça de Salvar o Log caso seja necessário :)")
+        print(e)
 
 
 
