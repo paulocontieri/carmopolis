@@ -1,5 +1,5 @@
                                                   ## IMPORTS
-
+import os
 import tkinter as tk
 import sqlite3
 import pandas as pd
@@ -16,6 +16,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.alert import Alert
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support.ui import Select
 from tkinter import filedialog
 from PIL import Image, ImageTk
 import customtkinter
@@ -94,7 +95,9 @@ def upload_arquivo():
 #######################################################
 # Função para verificar se há dados no banco de dados
 def verificar_dados_no_banco():
-    conn = sqlite3.connect('banco.db')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(script_dir, 'banco.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('SELECT COUNT(*) FROM banco')
     quantidade_dados = cursor.fetchone()[0]
@@ -105,7 +108,9 @@ def verificar_dados_no_banco():
 #######################################################
 # Carregar dados
 def carregar_dados(arquivo):
-    conn = sqlite3.connect('banco.db')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(script_dir, 'banco.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     df = pd.read_excel(arquivo)
@@ -185,7 +190,9 @@ def carregar_dados(arquivo):
 #######################################################
 # Configuração do banco de dados principal
 def configurar_banco_dados():
-    conn = sqlite3.connect('banco.db')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(script_dir, 'banco.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     # Criação da tabela banco se não existir
@@ -557,6 +564,14 @@ def processo():
                     lambda x: x.execute_script("return document.readyState == 'complete'")
                 )
 
+                # Escolher Exercicio
+                botao_exercicio = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64022_101_1']/article/div[1]/aside[1]/div/div[2]/table[2]/tbody/tr/td[2]/span/select/option[2]"))
+                )
+                botao_exercicio.click()
+                time.sleep(1)
+                
+
                 # Clicar Consultar
                 botao_consultar_tomador = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64022_101_1']/article/div[1]/aside[1]/div/div[3]/table/tbody/tr/td[3]"))
@@ -569,12 +584,12 @@ def processo():
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='conteudo_64022_101_1']/article/div[1]/header/div[2]/table/tbody/tr[1]/td[3]"))
                 )
                 botao_ordenar_tomador.click()
-                time.sleep(1)
+                time.sleep(3)
 
                 try:
                     # Clicar na Competência escolhida no app
                     linha_competencia_tomador = WebDriverWait(navegador, 10).until(
-                        EC.visibility_of_element_located((By.XPATH, f"//tr[td[@aria-description='{selected_period}']]"))
+                        EC.visibility_of_element_located((By.XPATH, f"//td[@aria-description='{selected_period}']"))
                     )
                     linha_competencia_tomador.click() 
                     time.sleep(1)
@@ -726,12 +741,11 @@ def processo():
                 valor_servico.send_keys(valor_contabil_formatado)
                 time.sleep(1)
 
-
-                fechar1 = WebDriverWait(navegador, 10).until(
-                    EC.visibility_of_element_located((By.XPATH, "//*[@id='janela_64023_139_1']/div[2]/footer/button[4]"))
+                confirmar_envio = WebDriverWait(navegador, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='janela_64023_139_1']/div[2]/footer/button[2]"))
                 )
-                fechar1.click()
-                time.sleep(2)
+                confirmar_envio.click()
+                time.sleep(1)
                 
                 fechar2 = WebDriverWait(navegador, 10).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='estrutura_janelas_abertas']/div/div[3]/ul/ul/li[2]/span/span[2]"))
